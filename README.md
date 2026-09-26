@@ -62,6 +62,10 @@ You should see **✅ Authorized** in the settings.
 
 Toggle which values to include in the tables. Recommended set: Calories, Carbs, Protein, Fat, Sugar.
 
+### 5. Optional: backfill yesterday
+
+Enable **Also write yesterday** in the plugin settings if you want the ribbon icon to write both today's and yesterday's diary. Useful when you log meals late at night and want yesterday's note refreshed the next morning.
+
 ## Usage
 
 - Click the **dice ribbon icon** in the left sidebar, or
@@ -98,7 +102,8 @@ The markers let the plugin find and replace the previous output on subsequent ru
 
 | Command | Description |
 |---|---|
-| **Write today's diary** | Fetch the diary and write it to the configured destination. |
+| **Write today's diary** | Fetch today's diary (and yesterday's too, if enabled) and write it to the configured destination. |
+| **Write diary for date** | Prompt for a date in `YYYY-MM-DD` format and write the diary for that day. |
 | **Authorize** | Start the OAuth 1.0a flow. |
 
 ## Privacy

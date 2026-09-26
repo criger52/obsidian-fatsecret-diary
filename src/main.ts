@@ -55,13 +55,52 @@ class VerifierModal extends Modal {
     }
 }
 
+class DateModal extends Modal {
+    private value: string;
+    private onSubmit: (value: string) => void;
+
+    constructor(app: App, initial: string, onSubmit: (value: string) => void) {
+        super(app);
+        this.value = initial;
+        this.onSubmit = onSubmit;
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.createEl("h2", { text: "Diary date" });
+        contentEl.createEl("p", {
+            text: "Enter a date in YYYY-MM-DD format.",
+        });
+
+        new Setting(contentEl).setName("Date").addText((text) =>
+            text.setValue(this.value).onChange((v) => {
+                this.value = v.trim();
+            })
+        );
+
+        new Setting(contentEl).addButton((btn) =>
+            btn
+                .setButtonText("Write")
+                .setCta()
+                .onClick(() => {
+                    this.close();
+                    this.onSubmit(this.value);
+                })
+        );
+    }
+
+    onClose() {
+        this.contentEl.empty();
+    }
+}
+
 export default class FatsecretDiaryPlugin extends Plugin {
     settings!: FatsecretSettings;
 
     async onload() {
         await this.loadSettings();
 
-        this.addRibbonIcon("dice", "Fatsecret: write today's diary", () => {
+        this.addRibbonIcon("utensils", "Fatsecret: write diary", () => {
             void this.runDiary();
         });
 
@@ -70,6 +109,14 @@ export default class FatsecretDiaryPlugin extends Plugin {
             name: "Write today's diary",
             callback: () => {
                 void this.runDiary();
+            },
+        });
+
+        this.addCommand({
+            id: "write-diary-for-date",
+            name: "Write diary for date",
+            callback: () => {
+                void this.runDiaryForDate();
             },
         });
 
@@ -109,10 +156,10 @@ export default class FatsecretDiaryPlugin extends Plugin {
         );
     }
 
-    async runDiary() {
+    private async ensureCredentials(): Promise<boolean> {
         if (!this.settings.consumerKey || !this.settings.consumerSecret) {
             new Notice("Fatsecret: set consumer key and secret in settings first");
-            return;
+            return false;
         }
 
         if (!this.hasCredentials()) {
@@ -120,10 +167,48 @@ export default class FatsecretDiaryPlugin extends Plugin {
             const ok = await this.startAuthorization();
             if (!ok) {
                 new Notice("Fatsecret: authorization cancelled");
-                return;
+                return false;
             }
         }
 
+        return true;
+    }
+
+    async runDiary() {
+        if (!(await this.ensureCredentials())) return;
+
+        const today = new Date();
+        await this.writeDiaryForDate(today);
+
+        if (this.settings.alsoYesterday) {
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            await this.writeDiaryForDate(yesterday);
+        }
+    }
+
+    async runDiaryForDate() {
+        if (!(await this.ensureCredentials())) return;
+
+        const today = new Date();
+        const initial = this.formatDateInput(today);
+
+        const value = await new Promise<string>((resolve) => {
+            new DateModal(this.app, initial, (v) => resolve(v)).open();
+        });
+
+        if (!value) return;
+
+        const parsed = this.parseDate(value);
+        if (!parsed) {
+            new Notice("Fatsecret: invalid date, expected YYYY-MM-DD");
+            return;
+        }
+
+        await this.writeDiaryForDate(parsed);
+    }
+
+    private async writeDiaryForDate(date: Date) {
         try {
             const creds: FatSecretCredentials = {
                 consumerKey: this.settings.consumerKey,
@@ -131,9 +216,9 @@ export default class FatsecretDiaryPlugin extends Plugin {
                 oauthToken: this.settings.oauthToken,
                 oauthTokenSecret: this.settings.oauthTokenSecret,
             };
-            const diary = await getDiaryEntries(creds, new Date());
-            const text = formatDiary(diary, new Date(), this.settings.metrics);
-            await this.writeToTarget(text);
+            const diary = await getDiaryEntries(creds, date);
+            const text = formatDiary(diary, date, this.settings.metrics);
+            await this.writeToTarget(text, date);
             new Notice("Fatsecret: diary written");
         } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
@@ -142,7 +227,31 @@ export default class FatsecretDiaryPlugin extends Plugin {
         }
     }
 
-    private async writeToTarget(text: string) {
+    private formatDateInput(d: Date): string {
+        const y = d.getFullYear();
+        const m = (d.getMonth() + 1).toString().padStart(2, "0");
+        const day = d.getDate().toString().padStart(2, "0");
+        return `${y}-${m}-${day}`;
+    }
+
+    private parseDate(value: string): Date | null {
+        if (!value) return null;
+        const parts = value.split("-");
+        if (parts.length !== 3) return null;
+        const yearStr = parts[0];
+        const monthStr = parts[1];
+        const dayStr = parts[2];
+        if (!yearStr || !monthStr || !dayStr) return null;
+        const year = parseInt(yearStr, 10);
+        const month = parseInt(monthStr, 10);
+        const day = parseInt(dayStr, 10);
+        if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) return null;
+        const d = new Date(year, month - 1, day);
+        if (Number.isNaN(d.getTime())) return null;
+        return d;
+    }
+
+    private async writeToTarget(text: string, date: Date) {
         const wrapped = `${BLOCK_START}\n${text}\n${BLOCK_END}`;
         const mode = this.settings.targetMode;
 
@@ -157,7 +266,7 @@ export default class FatsecretDiaryPlugin extends Plugin {
         }
 
         if (mode === "daily") {
-            const file = await this.getOrCreateDailyNote();
+            const file = await this.getOrCreateDailyNote(date);
             if (!file) {
                 new Notice("Could not open daily note. Check daily notes settings.");
                 return;
@@ -166,7 +275,6 @@ export default class FatsecretDiaryPlugin extends Plugin {
             return;
         }
 
-        // mode === "file"
         const path = normalizePath(this.settings.targetFile || "FatSecret Diary.md");
         let file = this.app.vault.getAbstractFileByPath(path);
 
@@ -205,9 +313,9 @@ export default class FatsecretDiaryPlugin extends Plugin {
     }
 
     /**
-     * Returns today's daily note, creating it from the Daily Notes config if needed.
+     * Returns the daily note for the given date, creating it from the Daily Notes config if needed.
      */
-    private async getOrCreateDailyNote(): Promise<TFile | null> {
+    private async getOrCreateDailyNote(date: Date): Promise<TFile | null> {
         const configPath = normalizePath(`${this.app.vault.configDir}/daily-notes.json`);
 
         let folder = "";
@@ -228,7 +336,7 @@ export default class FatsecretDiaryPlugin extends Plugin {
             // no config — use defaults
         }
 
-        const fileName = window.moment().format(format);
+        const fileName = window.moment(date).format(format);
         const path = normalizePath(folder ? `${folder}/${fileName}.md` : `${fileName}.md`);
 
         const existing = this.app.vault.getAbstractFileByPath(path);

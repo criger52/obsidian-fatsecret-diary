@@ -344,12 +344,19 @@ function escapePipe(s: string): string {
     return s.replace(/\|/g, "\\|");
 }
 
+function formatLocalDate(d: Date): string {
+    const y = d.getFullYear();
+    const m = (d.getMonth() + 1).toString().padStart(2, "0");
+    const day = d.getDate().toString().padStart(2, "0");
+    return `${y}-${m}-${day}`;
+}
+
 export function formatDiary(
     diary: DailyDiaryEntries,
     inputDate: Date,
     metrics: MetricConfig
 ): string {
-    const dateStr = inputDate.toISOString().slice(0, 10);
+    const dateStr = formatLocalDate(inputDate);
     const lines: string[] = [];
 
     lines.push(`## 🍽 FatSecret — ${dateStr}`);

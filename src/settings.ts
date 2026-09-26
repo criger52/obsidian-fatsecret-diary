@@ -30,6 +30,7 @@ export interface FatsecretSettings {
     oauthTokenSecret: string;
     targetMode: TargetMode;
     targetFile: string;
+    alsoYesterday: boolean;
     metrics: MetricConfig;
 }
 
@@ -40,6 +41,7 @@ export const DEFAULT_SETTINGS: FatsecretSettings = {
     oauthTokenSecret: "",
     targetMode: "daily",
     targetFile: "FatSecret Diary.md",
+    alsoYesterday: false,
     metrics: {
         calories: true,
         carbohydrate: true,
@@ -180,6 +182,18 @@ export class FatsecretSettingTab extends PluginSettingTab {
                         })
                 );
         }
+
+        new Setting(containerEl)
+            .setName("Also write yesterday")
+            .setDesc("When enabled, clicking the ribbon icon writes both today and yesterday.")
+            .addToggle((toggle) =>
+                toggle
+                    .setValue(this.plugin.settings.alsoYesterday)
+                    .onChange(async (v) => {
+                        this.plugin.settings.alsoYesterday = v;
+                        await this.plugin.saveSettings();
+                    })
+            );
 
         new Setting(containerEl).setName("Metrics").setHeading();
         containerEl.createEl("p", {
