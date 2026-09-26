@@ -1,0 +1,10 @@
+{
+    "id": "fatsecret-diary",
+    "name": "FatSecret Diary",
+    "version": "1.0.0",
+    "minAppVersion": "1.5.0",
+    "description": "Import your FatSecret food diary into a note. Writes a Markdown table with calories, macros, sugar, fiber and more.",
+    "author": "Your Name",
+    "authorUrl": "https://github.com/your-username",
+    "isDesktopOnly": true
+}
